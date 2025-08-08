@@ -8,12 +8,10 @@ namespace me007ys {
 static const char *const TAG = "me007ys";
 
 void ME007YSSensor::update() {
-  // Byte-wise parser with header sync and optional raw tracing
   enum ParseState : uint8_t { WAIT_HEADER = 0, READ_HIGH = 1, READ_LOW = 2, READ_SUM = 3 };
   static ParseState state = WAIT_HEADER;
   static uint8_t high = 0, low = 0;
 
-  // Diagnostics accounting per update cycle
   uint32_t valid_frames = 0;
   bool any_bytes = false;
 
@@ -57,8 +55,9 @@ void ME007YSSensor::update() {
           ESP_LOGVV(TAG, "FRAME: ff %02x %02x %02x (ok)", high, low, b);
         }
 
-        uint16_t distance_mm = (static_cast<uint16_t>(high) << 8) | low;
+        const uint16_t distance_mm = (static_cast<uint16_t>(high) << 8) | low;
 
+        // Lower bound
         if (distance_mm <= this->min_valid_mm_) {
           switch (this->behavior_) {
             case TooCloseBehavior::PUBLISH_MIN: {
@@ -87,8 +86,16 @@ void ME007YSSensor::update() {
               publish_status_("too_close");
               break;
           }
-        } else {
-          float distance_cm = distance_mm / 10.0f;
+        }
+        // Upper bound
+        else if (distance_mm >= this->max_valid_mm_) {
+          ESP_LOGW(TAG, "Too far (%u mm >= %u mm), publishing NaN", distance_mm, this->max_valid_mm_);
+          this->publish_state(NAN);
+          publish_status_("too_far");
+        }
+        // Valid range
+        else {
+          const float distance_cm = distance_mm / 10.0f;
           ESP_LOGD(TAG, "Distance: %.1f cm", distance_cm);
           this->publish_state(distance_cm);
           this->last_valid_cm_ = distance_cm;

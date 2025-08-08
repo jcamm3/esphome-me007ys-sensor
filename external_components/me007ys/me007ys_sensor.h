@@ -14,7 +14,10 @@ class ME007YSSensor : public PollingComponent, public uart::UARTDevice, public s
  public:
   ME007YSSensor() = default;
 
-  void set_min_valid_mm(uint16_t v) { min_valid_mm_ = v; }
+  // New cm-based setters; stored internally as mm for precision
+  void set_min_valid_cm(float cm) { min_valid_mm_ = static_cast<uint16_t>(cm * 10.0f + 0.5f); }
+  void set_max_valid_cm(float cm) { max_valid_mm_ = static_cast<uint16_t>(cm * 10.0f + 0.5f); }
+
   void set_too_close_behavior(const std::string &s) {
     if (s == "min")
       behavior_ = TooCloseBehavior::PUBLISH_MIN;
@@ -40,7 +43,10 @@ class ME007YSSensor : public PollingComponent, public uart::UARTDevice, public s
     }
   }
 
-  uint16_t min_valid_mm_{280};
+  // Internal thresholds (millimeters)
+  uint16_t min_valid_mm_{280};   // 28.0 cm default
+  uint16_t max_valid_mm_{4500};  // 450.0 cm default
+
   TooCloseBehavior behavior_{TooCloseBehavior::NAN_OUT};
   float last_valid_cm_{NAN};
   bool debug_raw_{false};
