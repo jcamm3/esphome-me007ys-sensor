@@ -1,0 +1,12 @@
+# ESPHome / PlatformIO / build artifacts
+.esphome/
+.pio/
+build/
+.pnp.cjs
+__pycache__/
+*.pyc
+*.pyo
+*.DS_Store
+*.swp
+.env
+secrets.yaml
