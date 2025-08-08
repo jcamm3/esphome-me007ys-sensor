@@ -1,8 +1,8 @@
 # ME007YS Ultrasonic Sensor for ESPHome
 
-An external ESPHome component for the **DFRobot SEN0312 / DYP‑ME007YS** waterproof ultrasonic sensor (UART), with a robust frame parser, configurable “too close” behavior, optional raw byte debug, and built‑in diagnostics.
+An external ESPHome component for the **DFRobot SEN0312 / DYP-ME007YS** waterproof ultrasonic sensor (UART), with a robust frame parser, configurable “too close” behavior, optional raw byte debug, and built-in diagnostics.
 
-> ✅ Works on ESP32 (incl. ESP32‑C3). Sensor must be powered at **5V**; UART logic is 3.3V‑safe.
+> ✅ Works on ESP32 (incl. ESP32-C3). Sensor must be powered at **5V**; UART logic is 3.3V-safe.
 
 ---
 
@@ -19,12 +19,13 @@ An external ESPHome component for the **DFRobot SEN0312 / DYP‑ME007YS** waterp
 - Diagnostics:
   - `frame_rate_hz` (valid frames per second)
   - `status` text sensor: `ok`, `too_close`, `checksum_error`, `idle`
+  - Both can be marked as **diagnostic** in Home Assistant UI
 
 ---
 
 ## Wiring
 
-| ME007YS | ESP32 example (ESP32‑C3‑DevKitM‑1) |
+| ME007YS | ESP32 example (ESP32-C3-DevKitM-1) |
 |---------|------------------------------------|
 | VCC     | 5V                                 |
 | GND     | GND                                |
@@ -62,8 +63,10 @@ sensor:
     debug_raw: false
     frame_rate_hz:
       name: "ME007YS Frame Rate"
+      entity_category: diagnostic   # Shows under Diagnostics in HA
     status:
       name: "ME007YS Status"
+      entity_category: diagnostic   # Shows under Diagnostics in HA
 
   # Optional: inches conversion
   - platform: template

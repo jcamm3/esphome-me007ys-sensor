@@ -1,8 +1,3 @@
-
----
-
-## `examples/me007ys_esp32c3.yaml`
-```yaml
 esphome:
   name: me007ys_sensor
   friendly_name: ME007YS Sensor
@@ -45,8 +40,10 @@ sensor:
     debug_raw: false
     frame_rate_hz:
       name: "ME007YS Frame Rate"
+      entity_category: diagnostic
     status:
       name: "ME007YS Status"
+      entity_category: diagnostic
 
   - platform: template
     name: "Water Level Distance (in)"
