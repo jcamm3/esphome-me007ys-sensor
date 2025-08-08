@@ -27,21 +27,16 @@ void ME007YSSensor::update() {
 
     switch (state) {
       case WAIT_HEADER:
-        if (b == 0xFF) {
-          state = READ_HIGH;
-        }
+        if (b == 0xFF) state = READ_HIGH;
         break;
-
       case READ_HIGH:
         high = b;
         state = READ_LOW;
         break;
-
       case READ_LOW:
         low = b;
         state = READ_SUM;
         break;
-
       case READ_SUM: {
         uint8_t sum = static_cast<uint8_t>((0xFF + high + low) & 0xFF);
         if (sum != b) {
@@ -51,52 +46,59 @@ void ME007YSSensor::update() {
           break;
         }
 
-        if (this->debug_raw_) {
-          ESP_LOGVV(TAG, "FRAME: ff %02x %02x %02x (ok)", high, low, b);
-        }
-
         const uint16_t distance_mm = (static_cast<uint16_t>(high) << 8) | low;
 
-        // Lower bound
+        // Too close
         if (distance_mm <= this->min_valid_mm_) {
-          switch (this->behavior_) {
-            case TooCloseBehavior::PUBLISH_MIN: {
+          switch (this->too_close_behavior_) {
+            case OutOfRangeBehavior::PUBLISH_LIMIT: {
               float cm = this->min_valid_mm_ / 10.0f;
-              ESP_LOGW(TAG, "Too close (%u mm). Publishing min %.1f cm", distance_mm, cm);
               this->publish_state(cm);
               this->last_valid_cm_ = cm;
               publish_status_("too_close");
               break;
             }
-            case TooCloseBehavior::HOLD_LAST: {
-              ESP_LOGW(TAG, "Too close (%u mm). Holding last valid %.1f cm",
-                       distance_mm, this->last_valid_cm_);
+            case OutOfRangeBehavior::HOLD_LAST:
               if (!std::isnan(this->last_valid_cm_))
                 this->publish_state(this->last_valid_cm_);
               else
                 this->publish_state(NAN);
               publish_status_("too_close");
               break;
-            }
-            case TooCloseBehavior::NAN_OUT:
+            case OutOfRangeBehavior::NAN_OUT:
             default:
-              ESP_LOGW(TAG, "Distance %u mm <= min_valid_mm (%u), publishing NaN",
-                       distance_mm, this->min_valid_mm_);
               this->publish_state(NAN);
               publish_status_("too_close");
               break;
           }
         }
-        // Upper bound
+        // Too far
         else if (distance_mm >= this->max_valid_mm_) {
-          ESP_LOGW(TAG, "Too far (%u mm >= %u mm), publishing NaN", distance_mm, this->max_valid_mm_);
-          this->publish_state(NAN);
-          publish_status_("too_far");
+          switch (this->too_far_behavior_) {
+            case OutOfRangeBehavior::PUBLISH_LIMIT: {
+              float cm = this->max_valid_mm_ / 10.0f;
+              this->publish_state(cm);
+              this->last_valid_cm_ = cm;
+              publish_status_("too_far");
+              break;
+            }
+            case OutOfRangeBehavior::HOLD_LAST:
+              if (!std::isnan(this->last_valid_cm_))
+                this->publish_state(this->last_valid_cm_);
+              else
+                this->publish_state(NAN);
+              publish_status_("too_far");
+              break;
+            case OutOfRangeBehavior::NAN_OUT:
+            default:
+              this->publish_state(NAN);
+              publish_status_("too_far");
+              break;
+          }
         }
-        // Valid range
+        // Valid
         else {
           const float distance_cm = distance_mm / 10.0f;
-          ESP_LOGD(TAG, "Distance: %.1f cm", distance_cm);
           this->publish_state(distance_cm);
           this->last_valid_cm_ = distance_cm;
           publish_status_("ok");
@@ -109,9 +111,7 @@ void ME007YSSensor::update() {
     }
   }
 
-  if (!any_bytes) {
-    publish_status_("idle");
-  }
+  if (!any_bytes) publish_status_("idle");
 
   if (this->frame_rate_sensor_ != nullptr) {
     float dt_s = this->get_update_interval() / 1000.0f;
