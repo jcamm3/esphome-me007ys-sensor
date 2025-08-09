@@ -1,15 +1,36 @@
+
+---
+
+## `examples/me007ys_esp32c3.yaml`
+```yaml
 esphome:
-  name: me007ys-esp32c3
-  friendly_name: ME007YS Example ESP32-C3
+  name: me007ys_sensor
+  friendly_name: ME007YS Sensor
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: arduino
 
 external_components:
   - source: github://YOUR_GITHUB_USERNAME/esphome-me007ys-sensor
     components: [me007ys]
 
+logger:
+  level: DEBUG
+  logs:
+    me007ys: VERY_VERBOSE   # set VERY_VERBOSE only if debug_raw: true
+
+api:
+ota:
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
 uart:
   id: uart_me007ys
-  tx_pin: GPIO1      # ESP TX → sensor RX
-  rx_pin: GPIO3      # ESP RX ← sensor TX
+  tx_pin: GPIO1
+  rx_pin: GPIO3
   baud_rate: 9600
   rx_buffer_size: 256
 
@@ -19,19 +40,14 @@ sensor:
     name: "Water Level Distance (cm)"
     id: water_level_cm
     update_interval: 500ms
-    min_valid_cm: 28.0       # default 28.0 cm
-    max_valid_cm: 450.0      # default 450.0 cm
-    too_close_behavior: min  # nan | min | last
-    too_far_behavior: max    # nan | max | last
+    min_valid_mm: 280
+    too_close_behavior: min      # nan | min | last
     debug_raw: false
     frame_rate_hz:
       name: "ME007YS Frame Rate"
-      entity_category: diagnostic
     status:
       name: "ME007YS Status"
-      entity_category: diagnostic
 
-  # Optional: inches conversion
   - platform: template
     name: "Water Level Distance (in)"
     unit_of_measurement: "in"
@@ -39,3 +55,4 @@ sensor:
     lambda: |-
       if (isnan(id(water_level_cm).state)) return NAN;
       return id(water_level_cm).state * 0.393701;
+    update_interval: 500ms

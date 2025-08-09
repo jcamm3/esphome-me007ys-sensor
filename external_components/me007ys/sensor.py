@@ -9,14 +9,8 @@ from esphome.const import (
     UNIT_CENTIMETER,
 )
 
-# New cm-based options
-CONF_MIN_VALID_CM = "min_valid_cm"
-CONF_MAX_VALID_CM = "max_valid_cm"
-CONF_MIN_VALID_MM = "min_valid_mm"  # deprecated alias
-CONF_MAX_VALID_MM = "max_valid_mm"  # deprecated alias
-
+CONF_MIN_VALID_MM = "min_valid_mm"
 CONF_TOO_CLOSE_BEHAVIOR = "too_close_behavior"
-CONF_TOO_FAR_BEHAVIOR = "too_far_behavior"
 CONF_DEBUG_RAW = "debug_raw"
 CONF_FRAME_RATE_HZ = "frame_rate_hz"
 CONF_STATUS = "status"
@@ -37,22 +31,12 @@ CONFIG_SCHEMA = (
     .extend(
         {
             cv.GenerateID(): cv.declare_id(ME007YSSensor),
-
-            cv.Optional(CONF_MIN_VALID_CM, default=28.0): cv.float_range(min=0.0, max=10000.0),
-            cv.Optional(CONF_MAX_VALID_CM, default=450.0): cv.float_range(min=0.0, max=10000.0),
-
-            cv.Optional(CONF_MIN_VALID_MM): cv.int_range(min=0, max=65535),
-            cv.Optional(CONF_MAX_VALID_MM): cv.int_range(min=0, max=65535),
-
+            cv.Optional(CONF_MIN_VALID_MM, default=280): cv.int_range(min=0, max=65535),
             cv.Optional(CONF_TOO_CLOSE_BEHAVIOR, default="nan"): cv.one_of(
                 "nan", "min", "last", lower=True
             ),
-            cv.Optional(CONF_TOO_FAR_BEHAVIOR, default="nan"): cv.one_of(
-                "nan", "max", "last", lower=True
-            ),
-
             cv.Optional(CONF_DEBUG_RAW, default=False): cv.boolean,
-
+            # Optional diagnostics
             cv.Optional(CONF_FRAME_RATE_HZ): sensor.sensor_schema(
                 unit_of_measurement="Hz",
                 accuracy_decimals=2,
@@ -68,23 +52,13 @@ CONFIG_SCHEMA = (
 )
 
 async def to_code(config):
-    min_cm = config.get(CONF_MIN_VALID_CM, 28.0)
-    max_cm = config.get(CONF_MAX_VALID_CM, 450.0)
-
-    if CONF_MIN_VALID_MM in config and CONF_MIN_VALID_CM not in config:
-        min_cm = float(config[CONF_MIN_VALID_MM]) / 10.0
-    if CONF_MAX_VALID_MM in config and CONF_MAX_VALID_CM not in config:
-        max_cm = float(config[CONF_MAX_VALID_MM]) / 10.0
-
     var = cg.new_Pvariable(config[CONF_ID])
     await uart.register_uart_device(var, config)
     await cg.register_component(var, config)
     await sensor.register_sensor(var, config)
 
-    cg.add(var.set_min_valid_cm(min_cm))
-    cg.add(var.set_max_valid_cm(max_cm))
+    cg.add(var.set_min_valid_mm(config[CONF_MIN_VALID_MM]))
     cg.add(var.set_too_close_behavior(config[CONF_TOO_CLOSE_BEHAVIOR]))
-    cg.add(var.set_too_far_behavior(config[CONF_TOO_FAR_BEHAVIOR]))
     cg.add(var.set_debug_raw(config[CONF_DEBUG_RAW]))
 
     if CONF_FRAME_RATE_HZ in config:

@@ -6,17 +6,6 @@
 ```markdown
 # Changelog
 
-## v1.2.0 — 2025-08-08
-- Added **`too_far_behavior`** option with choices `nan` | `max` | `last`, symmetric with `too_close_behavior`.
-- Updated README with `too_far_behavior` examples and behavior notes.
-
-## v1.1.0 — 2025-08-08
-- Switched configuration to **centimeters** for min/max valid distances.
-- Added `max_valid_cm` option (default 450.0 cm) per DFRobot spec.
-- Now reports `too_far` in `status` when exceeding `max_valid_cm`.
-- Retained backwards compatibility for `min_valid_mm`/`max_valid_mm` (auto-converted to cm).
-- Updated README with new options and default range (28.0–450.0 cm).
-
 ## v1.0.2 — 2025-08-08
 - Defaulted `frame_rate_hz` and `status` sensors to `entity_category: diagnostic` in example YAML.
 - Updated README with badge and documentation on diagnostic entities.
