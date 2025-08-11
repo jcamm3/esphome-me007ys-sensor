@@ -1,25 +1,19 @@
 
----
-
-# CHANGELOG.md (updated)
-
+## CHANGELOG.md
 ```markdown
 # Changelog
 
-## v1.0.2 — 2025-08-08
-- Defaulted `frame_rate_hz` and `status` sensors to `entity_category: diagnostic` in example YAML.
-- Updated README with badge and documentation on diagnostic entities.
+## v1.2.0 — 2025-08-11
+### Added
+- `raw_mm` diagnostic sensor to expose raw millimeter frames after checksum verification.
+- `raw_mm_policy` option:
+  - `all` — publish every valid-checksum frame (default)
+  - `valid_only` — publish only when in-range; NaN on too_close/too_far
+- Robustness controls:
+  - `guard_cm` — ignore band above `min_valid_cm`
+  - `max_step_cm` — drop unrealistic single-frame jumps
+  - `require_consecutive` — require N similar frames before publish
 
-## v1.0.1 — 2025-08-08
-- Added documentation for using `entity_category: diagnostic` with `frame_rate_hz` and `status` sensors.
-- Clarified options to hide or move diagnostic entities in Home Assistant.
-
-## v1.0.0 — 2025-08-08
-- Initial public release of ME007YS external component for ESPHome.
-- Features:
-  - Robust UART frame parser with header sync (0xFF) and checksum validation.
-  - Configurable min valid distance.
-  - `too_close_behavior`: `nan` | `min` | `last`.
-  - Optional `debug_raw` byte/frame logging.
-  - Diagnostics: `frame_rate_hz` numeric sensor, `status` text sensor.
-  - Example YAML for ESP32‑C3 (GPIO1/3).
+### Changed
+- Upper bound handling simplified: distance ≥ `max_valid_cm` → publish NaN + `too_far` (no `too_far_behavior`).
+- README updated with synced inches example (Option A).

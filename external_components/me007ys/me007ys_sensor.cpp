@@ -1,6 +1,5 @@
 #include "me007ys_sensor.h"
 #include "esphome/core/log.h"
-#include <cmath>
 
 namespace esphome {
 namespace me007ys {
@@ -8,110 +7,139 @@ namespace me007ys {
 static const char *const TAG = "me007ys";
 
 void ME007YSSensor::update() {
-  // Byte-wise parser with header sync and optional raw tracing
-  enum ParseState : uint8_t { WAIT_HEADER = 0, READ_HIGH = 1, READ_LOW = 2, READ_SUM = 3 };
-  static ParseState state = WAIT_HEADER;
-  static uint8_t high = 0, low = 0;
-
-  // Diagnostics accounting per update cycle
+  // Parse frames: [0xFF][HIGH][LOW][SUM]
   uint32_t valid_frames = 0;
   bool any_bytes = false;
 
-  while (this->available() > 0) {
-    int rb = this->read();
-    if (rb < 0) break;
-    uint8_t b = static_cast<uint8_t>(rb);
+  while (this->available() >= 4) {
     any_bytes = true;
 
-    if (this->debug_raw_) {
-      ESP_LOGVV(TAG, "RX byte: 0x%02X (state=%u)", b, static_cast<unsigned>(state));
+    uint8_t start = this->read();
+    if (this->debug_raw_) ESP_LOGVV(TAG, "RX start: 0x%02X", start);
+    if (start != 0xFF) continue;  // resync
+
+    int h = this->read();
+    int l = this->read();
+    int s = this->read();
+    if (h < 0 || l < 0 || s < 0) break;
+
+    uint8_t high = static_cast<uint8_t>(h);
+    uint8_t low  = static_cast<uint8_t>(l);
+    uint8_t sum  = static_cast<uint8_t>(s);
+    uint8_t calc_sum = static_cast<uint8_t>((0xFF + high + low) & 0xFF);
+
+    if (this->debug_raw_) ESP_LOGVV(TAG, "FRAME: ff %02x %02x %02x (calc=%02x)", high, low, sum, calc_sum);
+
+    if (sum != calc_sum) {
+      ESP_LOGW(TAG, "Checksum mismatch: got 0x%02X, expected 0x%02X", sum, calc_sum);
+      this->publish_status_("checksum_error");
+      continue;
     }
 
-    switch (state) {
-      case WAIT_HEADER:
-        if (b == 0xFF) {
-          state = READ_HIGH;
-        }
-        break;
+    const uint16_t distance_mm = (static_cast<uint16_t>(high) << 8) | low;
 
-      case READ_HIGH:
-        high = b;
-        state = READ_LOW;
-        break;
+    // raw_mm: ALL -> publish now, VALID_ONLY -> publish later if accepted
+    if (this->raw_mm_sensor_ != nullptr && this->raw_policy_ == RawPolicy::ALL) {
+      this->raw_mm_sensor_->publish_state(distance_mm);
+    }
 
-      case READ_LOW:
-        low = b;
-        state = READ_SUM;
-        break;
+    // Lower bound + guard band
+    const uint16_t guard_min_mm = static_cast<uint16_t>(this->min_valid_mm_ + this->guard_mm_);
+    if (distance_mm <= this->min_valid_mm_ || distance_mm < guard_min_mm) {
+      if (this->raw_mm_sensor_ != nullptr && this->raw_policy_ == RawPolicy::VALID_ONLY) {
+        this->raw_mm_sensor_->publish_state(NAN);
+      }
 
-      case READ_SUM: {
-        uint8_t sum = static_cast<uint8_t>((0xFF + high + low) & 0xFF);
-        if (sum != b) {
-          ESP_LOGW(TAG, "Checksum mismatch: got 0x%02X, expected 0x%02X", b, sum);
-          publish_status_("checksum_error");
-          state = (b == 0xFF) ? READ_HIGH : WAIT_HEADER;
+      switch (this->too_close_behavior_) {
+        case OutOfRangeBehavior::PUBLISH_LIMIT: {
+          const float cm = this->min_valid_mm_ / 10.0f;
+          this->publish_state(cm);
+          this->last_valid_cm_ = cm;
           break;
         }
-
-        if (this->debug_raw_) {
-          ESP_LOGVV(TAG, "FRAME: ff %02x %02x %02x (ok)", high, low, b);
+        case OutOfRangeBehavior::HOLD_LAST: {
+          if (!std::isnan(this->last_valid_cm_)) this->publish_state(this->last_valid_cm_);
+          else this->publish_state(NAN);
+          break;
         }
+        case OutOfRangeBehavior::NAN_OUT:
+        default:
+          this->publish_state(NAN);
+          break;
+      }
+      this->last_candidate_cm_ = NAN;
+      this->streak_ = 0;
+      this->publish_status_("too_close");
+      valid_frames++;
+      continue;
+    }
 
-        uint16_t distance_mm = (static_cast<uint16_t>(high) << 8) | low;
+    // Upper bound: always NaN + too_far
+    if (distance_mm >= this->max_valid_mm_) {
+      if (this->raw_mm_sensor_ != nullptr && this->raw_policy_ == RawPolicy::VALID_ONLY) {
+        this->raw_mm_sensor_->publish_state(NAN);
+      }
+      this->publish_state(NAN);
+      this->last_candidate_cm_ = NAN;
+      this->streak_ = 0;
+      this->publish_status_("too_far");
+      valid_frames++;
+      continue;
+    }
 
-        if (distance_mm <= this->min_valid_mm_) {
-          switch (this->behavior_) {
-            case TooCloseBehavior::PUBLISH_MIN: {
-              float cm = this->min_valid_mm_ / 10.0f;
-              ESP_LOGW(TAG, "Too close (%u mm). Publishing min %.1f cm", distance_mm, cm);
-              this->publish_state(cm);
-              this->last_valid_cm_ = cm;
-              publish_status_("too_close");
-              break;
-            }
-            case TooCloseBehavior::HOLD_LAST: {
-              ESP_LOGW(TAG, "Too close (%u mm). Holding last valid %.1f cm",
-                       distance_mm, this->last_valid_cm_);
-              if (!std::isnan(this->last_valid_cm_))
-                this->publish_state(this->last_valid_cm_);
-              else
-                this->publish_state(NAN);
-              publish_status_("too_close");
-              break;
-            }
-            case TooCloseBehavior::NAN_OUT:
-            default:
-              ESP_LOGW(TAG, "Distance %u mm <= min_valid_mm (%u), publishing NaN",
-                       distance_mm, this->min_valid_mm_);
-              this->publish_state(NAN);
-              publish_status_("too_close");
-              break;
-          }
-        } else {
-          float distance_cm = distance_mm / 10.0f;
-          ESP_LOGD(TAG, "Distance: %.1f cm", distance_cm);
-          this->publish_state(distance_cm);
-          this->last_valid_cm_ = distance_cm;
-          publish_status_("ok");
-        }
+    // Candidate valid reading
+    const float cm = distance_mm / 10.0f;
 
+    // Step limiter (vs last published)
+    if (this->max_step_mm_ > 0 && !std::isnan(this->last_published_cm_)) {
+      float step_cm = fabsf(cm - this->last_published_cm_);
+      if (step_cm * 10.0f > this->max_step_mm_) {
+        this->last_candidate_cm_ = NAN;
+        this->streak_ = 0;
         valid_frames++;
-        state = WAIT_HEADER;
-        break;
+        continue;
       }
     }
+
+    // Consecutive confirmation (within 1.0 cm similarity)
+    const float SIM_TOL_CM = 1.0f;
+    if (std::isnan(this->last_candidate_cm_) || fabsf(cm - this->last_candidate_cm_) <= SIM_TOL_CM) {
+      if (this->streak_ < 255) this->streak_++;
+    } else {
+      this->streak_ = 1;
+    }
+    this->last_candidate_cm_ = cm;
+
+    if (this->streak_ < this->require_consecutive_) {
+      valid_frames++;
+      continue;
+    }
+
+    // Accept and publish
+    this->publish_state(cm);
+    this->last_valid_cm_ = cm;
+    this->last_published_cm_ = cm;
+    this->streak_ = 0;
+    this->last_candidate_cm_ = NAN;
+    this->publish_status_("ok");
+
+    // raw_mm: VALID_ONLY -> publish now (accepted in-range mm)
+    if (this->raw_mm_sensor_ != nullptr && this->raw_policy_ == RawPolicy::VALID_ONLY) {
+      this->raw_mm_sensor_->publish_state(distance_mm);
+    }
+
+    valid_frames++;
   }
 
-  if (!any_bytes) {
-    publish_status_("idle");
-  }
-
+  // Frame rate over polling window (optional)
   if (this->frame_rate_sensor_ != nullptr) {
     float dt_s = this->get_update_interval() / 1000.0f;
     if (dt_s <= 0.0f) dt_s = 0.5f;
     float rate_hz = valid_frames / dt_s;
     this->frame_rate_sensor_->publish_state(rate_hz);
   }
+
+  if (!any_bytes) this->publish_status_("idle");
 }
 
 }  // namespace me007ys
